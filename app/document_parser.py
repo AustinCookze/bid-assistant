@@ -58,7 +58,7 @@ class DocumentParser:
         return "\n".join(text_parts)
     
     @staticmethod
-def parse(file_path: str, file_type: Optional[str] = None) -> str:
+    def parse(file_path: str, file_type: Optional[str] = None) -> str:
         """根据文件类型自动选择解析方法"""
         if file_type is None:
             file_type = file_path.lower().split('.')[-1]
