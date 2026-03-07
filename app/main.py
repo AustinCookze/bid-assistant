@@ -1,5 +1,5 @@
 """
-FastAPI 主应用
+FastAPI 主应用 - 内存存储版本（适配 Railway 无状态部署）
 """
 from fastapi import FastAPI, File, UploadFile, HTTPException, BackgroundTasks
 from fastapi.responses import FileResponse, StreamingResponse
@@ -8,6 +8,7 @@ from typing import Optional
 import os
 import uuid
 import json
+import io
 from datetime import datetime
 
 from app.config import get_settings
@@ -33,11 +34,9 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# 确保上传目录存在
-os.makedirs(settings.UPLOAD_DIR, exist_ok=True)
-
-# 内存存储（生产环境应使用 Redis/数据库）
+# 内存存储（适配 Railway 无状态部署）
 analysis_results = {}
+file_storage = {}  # 文件内容内存存储
 
 
 @app.get("/api/health")
@@ -54,7 +53,7 @@ async def health_check():
 @app.post("/api/upload")
 async def upload_file(file: UploadFile = File(...)):
     """
-    上传招标文件
+    上传招标文件（内存存储版本）
     支持格式：PDF, DOCX, DOC
     """
     # 验证文件类型
@@ -69,22 +68,26 @@ async def upload_file(file: UploadFile = File(...)):
     
     # 生成唯一 ID
     file_id = str(uuid.uuid4())
-    file_path = os.path.join(settings.UPLOAD_DIR, f"{file_id}{file_ext}")
     
     try:
-        # 保存文件
-        with open(file_path, "wb") as f:
-            content = await file.read()
-            if len(content) > settings.MAX_FILE_SIZE:
-                raise HTTPException(
-                    status_code=400,
-                    detail=f"文件大小超过限制: {settings.MAX_FILE_SIZE / 1024 / 1024}MB"
-                )
-            f.write(content)
+        # 读取文件内容到内存
+        content = await file.read()
+        if len(content) > settings.MAX_FILE_SIZE:
+            raise HTTPException(
+                status_code=400,
+                detail=f"文件大小超过限制: {settings.MAX_FILE_SIZE / 1024 / 1024}MB"
+            )
         
-        # 解析文档
+        # 保存到内存
+        file_storage[file_id] = {
+            "content": content,
+            "filename": file.filename,
+            "ext": file_ext
+        }
+        
+        # 解析文档（从内存）
         parser = DocumentParser()
-        raw_text = parser.parse(file_path, file_ext.replace('.', ''))
+        raw_text = parser.parse_from_bytes(content, file_ext.replace('.', ''))
         
         # 清洗文本
         cleaner = TextCleaner()
@@ -94,7 +97,6 @@ async def upload_file(file: UploadFile = File(...)):
         analysis_results[file_id] = {
             "id": file_id,
             "filename": file.filename,
-            "file_path": file_path,
             "text": clean_text,
             "status": "parsed",
             "created_at": datetime.now().isoformat(),
@@ -111,9 +113,9 @@ async def upload_file(file: UploadFile = File(...)):
         }
         
     except Exception as e:
-        # 清理文件
-        if os.path.exists(file_path):
-            os.remove(file_path)
+        # 清理内存
+        if file_id in file_storage:
+            del file_storage[file_id]
         raise HTTPException(status_code=500, detail=f"文件处理失败: {str(e)}")
 
 
@@ -151,6 +153,7 @@ async def analyze_document(file_id: str, background_tasks: BackgroundTasks):
         
         # 合并结果
         analysis_data = {
+            "id": file_id,
             "project_info": preliminary_analysis.project_info,
             "disqualification_items": [
                 {
@@ -285,20 +288,9 @@ async def delete_analysis(file_id: str):
     if file_id not in analysis_results:
         raise HTTPException(status_code=404, detail="文件不存在")
     
-    result = analysis_results[file_id]
-    
-    # 删除文件
-    if os.path.exists(result["file_path"]):
-        os.remove(result["file_path"])
-    
-    # 删除记录
+    # 清理内存
+    if file_id in file_storage:
+        del file_storage[file_id]
     del analysis_results[file_id]
     
     return {"message": "删除成功"}
-
-
-import io
-
-if __name__ == "__main__":
-    import uvicorn
-    uvicorn.run(app, host="0.0.0.0", port=8000)

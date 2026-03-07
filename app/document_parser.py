@@ -71,6 +71,47 @@ class DocumentParser:
             raise ValueError(f"不支持的文件格式: {file_type}")
 
 
+    @staticmethod
+    def parse_from_bytes(content: bytes, file_type: str) -> str:
+        """从字节流解析文档"""
+        if file_type in ['pdf']:
+            return DocumentParser._parse_pdf_bytes(content)
+        elif file_type in ['docx', 'doc']:
+            return DocumentParser._parse_word_bytes(content)
+        else:
+            raise ValueError(f"不支持的文件格式: {file_type}")
+    
+    @staticmethod
+    def _parse_pdf_bytes(content: bytes) -> str:
+        """从字节流解析 PDF"""
+        text_parts = []
+        with fitz.open(stream=content, filetype="pdf") as doc:
+            for page_num, page in enumerate(doc, 1):
+                text = page.get_text()
+                if text.strip():
+                    text_parts.append(f"\n--- 第{page_num}页 ---\n{text}")
+        return "\n".join(text_parts)
+    
+    @staticmethod
+    def _parse_word_bytes(content: bytes) -> str:
+        """从字节流解析 Word"""
+        doc = Document(io.BytesIO(content))
+        text_parts = []
+        
+        for para in doc.paragraphs:
+            if para.text.strip():
+                text_parts.append(para.text)
+        
+        for table_idx, table in enumerate(doc.tables):
+            text_parts.append(f"\n[表格 {table_idx + 1}]")
+            for row in table.rows:
+                row_text = " | ".join(cell.text.strip() for cell in row.cells)
+                if row_text:
+                    text_parts.append(row_text)
+        
+        return "\n".join(text_parts)
+
+
 class TextCleaner:
     """文本清洗工具"""
     
