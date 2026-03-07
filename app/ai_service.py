@@ -12,9 +12,13 @@ class AIService:
     
     def __init__(self):
         self.settings = get_settings()
+        # 使用 httpx 客户端避免 proxies 参数问题
+        import httpx
+        http_client = httpx.Client(timeout=120.0)
         self.client = openai.OpenAI(
             api_key=self.settings.MOONSHOT_API_KEY,
-            base_url=self.settings.MODEL_BASE_URL
+            base_url=self.settings.MODEL_BASE_URL,
+            http_client=http_client
         )
     
     def analyze_tender_document(self, document_text: str) -> Dict[str, Any]:
