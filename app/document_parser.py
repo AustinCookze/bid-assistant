@@ -152,13 +152,27 @@ class DocumentParser:
             if re.match(page_number_pattern, text) and len(text) < 5:
                 continue
             
-            # 检测章节标题（用于结构化）
-            # 招标文件常见的章节标题格式
+            # 检测真正的章节标题（用于结构化）
+            # 区分：章节标题 vs 条款编号
+            # 章节标题：第一章、第1章、一、（一）
+            # 条款编号：5.8、5.8.1、（1）、1.
+            
+            # 真正的章节标题模式（大章节）
             chapter_patterns = [
-                r'^第[一二三四五六七八九十\d]+章',  # 第一章
-                r'^第[一二三四五六七八九十\d]+节',  # 第一节
-                r'^\d+\.\d+\s+',  # 1.1 标题
-                r'^\d+\s+[一二三四五六七八九十]',  # 1 一、
+                r'^第[一二三四五六七八九十百千]+章',  # 第一章、第十章
+                r'^第\d+章',  # 第1章、第10章
+                r'^[一二三四五六七八九十百千]+、',  # 一、二、
+                r'^（[一二三四五六七八九十]）',  # （一）（二）
+                r'^\([一二三四五六七八九十]\)',  # (一)(二)
+            ]
+            
+            # 条款/条目编号（不是章节标题，保留在正文中）
+            clause_patterns = [
+                r'^\d+\.\d+\.\d+',  # 5.8.1, 1.1.1
+                r'^\d+\.\d+',  # 5.8, 1.1
+                r'^\d+\.',  # 1. 2.（但后面要跟内容）
+                r'^（\d+）',  # （1）（2）
+                r'^\(\d+\)',  # (1)(2)
             ]
             
             is_chapter = False
@@ -167,11 +181,21 @@ class DocumentParser:
                     is_chapter = True
                     break
             
-            # 如果是章节标题，添加分隔
+            # 如果是真正的章节标题，添加分隔
             if is_chapter:
                 text_parts.append(f"\n{'='*40}\n{text}\n{'='*40}")
             else:
-                text_parts.append(text)
+                # 条款编号保留原样，但添加换行便于阅读
+                is_clause = False
+                for pattern in clause_patterns:
+                    if re.match(pattern, text):
+                        is_clause = True
+                        break
+                
+                if is_clause and not text_parts[-1].endswith('\n'):
+                    text_parts.append('\n' + text)
+                else:
+                    text_parts.append(text)
         
         # 提取表格内容（评分标准、技术参数通常是表格）
         for table_idx, table in enumerate(doc.tables):
