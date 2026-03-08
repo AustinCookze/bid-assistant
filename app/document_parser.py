@@ -98,12 +98,13 @@ class DocumentParser:
         doc = Document(io.BytesIO(content))
         text_parts = []
         
-        # 检测并跳过目录页
+        # 检测目录页的模式
         toc_patterns = [
             r'^\s*目\s*录\s*$',
             r'^\s*contents\s*$',
-            r'^\s*第[一二三四五六七八九十\d]+章.*\.\.\.\.\.\.*\d+\s*$',  # 目录行：第一章......1
-            r'^\s*\d+\.\d+.*\.\.\.\.\.\.*\d+\s*$',  # 目录行：1.1 标题......1
+            r'^\s*第[一二三四五六七八九十\d]+章.*\.\.\.*\d+\s*$',  # 第一章......1
+            r'^\s*\d+\.\d+.*\.\.\.*\d+\s*$',  # 1.1 标题......1
+            r'^\s*第[一二三四五六七八九十\d]+节.*\.\.\.*\d+\s*$',  # 第一节......5
         ]
         
         # 页眉页脚常见模式
@@ -116,28 +117,40 @@ class DocumentParser:
         # 纯数字行（可能是页码）
         page_number_pattern = r'^\s*\d+\s*$'
         
-        skip_count = 0
-        max_skip = 50  # 最多跳过前50个段落（目录通常在前几页）
+        # 检测是否还在目录区域
+        in_toc = False
+        toc_end_idx = 0
         
         for idx, para in enumerate(doc.paragraphs):
             text = para.text.strip()
             if not text:
                 continue
             
-            # 检测目录页并跳过
-            if idx < max_skip:
-                is_toc = False
+            # 检测目录开始
+            if not in_toc and idx < 100:
                 for pattern in toc_patterns:
                     if re.match(pattern, text, re.IGNORECASE):
-                        is_toc = True
-                        skip_count += 1
+                        in_toc = True
                         break
-                if is_toc:
-                    continue
-                
-                # 如果连续跳过很多行，可能是目录，恢复正常处理
-                if skip_count > 20 and idx > skip_count + 5:
-                    pass  # 恢复正常处理
+            
+            # 检测目录结束（遇到正文内容）
+            if in_toc:
+                # 如果连续遇到非目录格式的内容，认为目录结束
+                is_toc_line = False
+                for pattern in toc_patterns:
+                    if re.match(pattern, text, re.IGNORECASE):
+                        is_toc_line = True
+                        break
+                # 目录行通常包含......和页码
+                if '....' in text or '。。。' in text:
+                    is_toc_line = True
+                if not is_toc_line and len(text) > 20:
+                    in_toc = False
+                    toc_end_idx = idx
+            
+            # 跳过目录内容
+            if in_toc:
+                continue
             
             # 跳过页眉页脚
             is_header_footer = False
@@ -152,27 +165,12 @@ class DocumentParser:
             if re.match(page_number_pattern, text) and len(text) < 5:
                 continue
             
-            # 检测真正的章节标题（用于结构化）
-            # 区分：章节标题 vs 条款编号
-            # 章节标题：第一章、第1章、一、（一）
-            # 条款编号：5.8、5.8.1、（1）、1.
-            
-            # 真正的章节标题模式（大章节）
+            # 检测真正的章节标题（大章节）
             chapter_patterns = [
-                r'^第[一二三四五六七八九十百千]+章',  # 第一章、第十章
-                r'^第\d+章',  # 第1章、第10章
-                r'^[一二三四五六七八九十百千]+、',  # 一、二、
-                r'^（[一二三四五六七八九十]）',  # （一）（二）
-                r'^\([一二三四五六七八九十]\)',  # (一)(二)
-            ]
-            
-            # 条款/条目编号（不是章节标题，保留在正文中）
-            clause_patterns = [
-                r'^\d+\.\d+\.\d+',  # 5.8.1, 1.1.1
-                r'^\d+\.\d+',  # 5.8, 1.1
-                r'^\d+\.',  # 1. 2.（但后面要跟内容）
-                r'^（\d+）',  # （1）（2）
-                r'^\(\d+\)',  # (1)(2)
+                r'^第[一二三四五六七八九十百千]+章\s+',  # 第一章 标题
+                r'^第\d+章\s+',  # 第1章 标题
+                r'^[一二三四五六七八九十百千]+、',  # 一、标题
+                r'^（[一二三四五六七八九十]）',  # （一）标题
             ]
             
             is_chapter = False
@@ -181,36 +179,31 @@ class DocumentParser:
                     is_chapter = True
                     break
             
-            # 如果是真正的章节标题，添加分隔
+            # 如果是章节标题，添加分隔
             if is_chapter:
-                text_parts.append(f"\n{'='*40}\n{text}\n{'='*40}")
+                text_parts.append(f"\n【章节】{text}")
             else:
-                # 条款编号保留原样，但添加换行便于阅读
-                is_clause = False
-                for pattern in clause_patterns:
-                    if re.match(pattern, text):
-                        is_clause = True
-                        break
-                
-                if is_clause and not text_parts[-1].endswith('\n'):
-                    text_parts.append('\n' + text)
-                else:
-                    text_parts.append(text)
+                # 条款编号保留原样
+                text_parts.append(text)
         
         # 提取表格内容（评分标准、技术参数通常是表格）
         for table_idx, table in enumerate(doc.tables):
-            # 检查表格内容，判断是否是内容表格还是布局表格
+            # 检查表格内容
             table_texts = []
+            has_content = False
             for row in table.rows:
                 row_text = " | ".join(cell.text.strip() for cell in row.cells)
                 if row_text:
                     table_texts.append(row_text)
+                    # 检查是否有实质内容（不仅仅是数字或页码）
+                    if len(row_text) > 10 and not re.match(r'^\s*\d+\s*$', row_text):
+                        has_content = True
             
             # 如果表格有实质内容，保留
-            if table_texts and len(table_texts) > 1:
-                text_parts.append(f"\n[表格 {table_idx + 1}]")
+            if has_content and len(table_texts) > 1:
+                text_parts.append(f"\n【表格开始】")
                 text_parts.extend(table_texts)
-                text_parts.append("[表格结束]\n")
+                text_parts.append("【表格结束】\n")
         
         return "\n".join(text_parts)
 
