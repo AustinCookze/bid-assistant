@@ -38,6 +38,13 @@ app.add_middleware(
 analysis_results = {}
 file_storage = {}  # 文件内容内存存储
 
+# API 配置存储（支持运行时修改）
+api_config = {
+    "api_key": settings.MOONSHOT_API_KEY,
+    "model_name": settings.MODEL_NAME,
+    "base_url": settings.MODEL_BASE_URL
+}
+
 
 @app.get("/api/health")
 async def health_check():
@@ -45,8 +52,63 @@ async def health_check():
     return {
         "status": "ok",
         "version": "1.1.0",
-        "model": settings.MODEL_NAME,
+        "model": api_config["model_name"],
         "timestamp": datetime.now().isoformat()
+    }
+
+
+@app.get("/api/config")
+async def get_config():
+    """
+    获取当前 API 配置
+    返回模型名称和 API 基础配置（不包含敏感信息）
+    """
+    return {
+        "model_name": api_config["model_name"],
+        "base_url": api_config["base_url"],
+        "available_models": [
+            {"id": "moonshot-v1-8k", "name": "Moonshot 8K", "context": "8K"},
+            {"id": "moonshot-v1-32k", "name": "Moonshot 32K", "context": "32K"},
+            {"id": "moonshot-v1-128k", "name": "Moonshot 128K", "context": "128K"},
+            {"id": "kimi-k2.5", "name": "Kimi K2.5", "context": "256K"}
+        ]
+    }
+
+
+@app.post("/api/config")
+async def update_config(config: dict):
+    """
+    更新 API 配置
+    支持修改：api_key, model_name, base_url
+    """
+    global api_config
+    
+    # 验证必填字段
+    if "api_key" not in config or not config["api_key"]:
+        raise HTTPException(status_code=400, detail="API Key 不能为空")
+    
+    if "model_name" not in config or not config["model_name"]:
+        raise HTTPException(status_code=400, detail="模型名称不能为空")
+    
+    # 验证支持的模型
+    supported_models = ["moonshot-v1-8k", "moonshot-v1-32k", "moonshot-v1-128k", "kimi-k2.5"]
+    if config["model_name"] not in supported_models:
+        raise HTTPException(
+            status_code=400, 
+            detail=f"不支持的模型: {config['model_name']}。支持的模型: {', '.join(supported_models)}"
+        )
+    
+    # 更新配置
+    api_config["api_key"] = config["api_key"]
+    api_config["model_name"] = config["model_name"]
+    
+    if "base_url" in config and config["base_url"]:
+        api_config["base_url"] = config["base_url"]
+    
+    return {
+        "message": "配置更新成功",
+        "model_name": api_config["model_name"],
+        "base_url": api_config["base_url"]
     }
 
 

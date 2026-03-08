@@ -10,14 +10,20 @@ import json
 class AIService:
     """AI 分析服务"""
     
-    def __init__(self):
+    def __init__(self, api_key: str = None, model_name: str = None, base_url: str = None):
         self.settings = get_settings()
+        # 使用传入的配置或默认配置
+        from app.main import api_config
+        self.api_key = api_key or api_config.get("api_key") or self.settings.MOONSHOT_API_KEY
+        self.model_name = model_name or api_config.get("model_name") or self.settings.MODEL_NAME
+        self.base_url = base_url or api_config.get("base_url") or self.settings.MODEL_BASE_URL
+        
         # 使用 httpx 客户端避免 proxies 参数问题
         import httpx
         http_client = httpx.Client(timeout=120.0)
         self.client = openai.OpenAI(
-            api_key=self.settings.MOONSHOT_API_KEY,
-            base_url=self.settings.MODEL_BASE_URL,
+            api_key=self.api_key,
+            base_url=self.base_url,
             http_client=http_client
         )
     
@@ -39,10 +45,10 @@ class AIService:
         }
     
     def _call_model(self, prompt: str, temperature: float = 0.3) -> str:
-        """调用 Kimi K2.5 模型"""
+        """调用 AI 模型"""
         try:
             response = self.client.chat.completions.create(
-                model=self.settings.MODEL_NAME,  # kimi-k2.5
+                model=self.model_name,
                 messages=[
                     {"role": "system", "content": "你是一位专业的招投标分析专家。"},
                     {"role": "user", "content": prompt}
@@ -52,14 +58,16 @@ class AIService:
             )
             return response.choices[0].message.content
         except Exception as e:
-            # 如果 kimi-k2.5 调用失败，尝试备用模型
-            if "kimi-k2.5" in str(e):
+            # 如果主模型调用失败，尝试备用模型
+            error_msg = str(e).lower()
+            if "not found" in error_msg or "permission denied" in error_msg or "temperature" in error_msg:
                 return self._call_fallback_model(prompt, temperature)
             raise e
     
     def _call_fallback_model(self, prompt: str, temperature: float) -> str:
         """备用模型调用"""
-        fallback_models = ["moonshot-v1-128k", "moonshot-v1-32k", "kimi-k2.5"]
+        # 根据主模型选择合适的备用模型
+        fallback_models = ["moonshot-v1-32k", "moonshot-v1-8k"]
         
         for model in fallback_models:
             try:

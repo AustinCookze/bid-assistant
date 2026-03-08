@@ -7,8 +7,8 @@ class Settings(BaseSettings):
     # API Keys
     MOONSHOT_API_KEY: str = "sk-8YvWRliaCJrcVBLvfQgopi0ebEiwEcKyTdVbYajiiKYmHmCZ"
     
-    # 模型配置
-    MODEL_NAME: str = "moonshot-v1-256k"  # 使用 Moonshot 256k 上下文模型
+    # 模型配置 - 支持的可选模型：moonshot-v1-8k, moonshot-v1-32k, moonshot-v1-128k, kimi-k2.5
+    MODEL_NAME: str = "moonshot-v1-128k"  # 使用 Moonshot 128k 上下文模型
     MODEL_BASE_URL: str = "https://api.moonshot.cn/v1"
     
     # 应用配置
