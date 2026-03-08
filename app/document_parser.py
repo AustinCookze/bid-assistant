@@ -94,20 +94,99 @@ class DocumentParser:
     
     @staticmethod
     def _parse_word_bytes(content: bytes) -> str:
-        """从字节流解析 Word"""
+        """从字节流解析 Word - 智能识别文档结构"""
         doc = Document(io.BytesIO(content))
         text_parts = []
         
-        for para in doc.paragraphs:
-            if para.text.strip():
-                text_parts.append(para.text)
+        # 检测并跳过目录页
+        toc_patterns = [
+            r'^\s*目\s*录\s*$',
+            r'^\s*contents\s*$',
+            r'^\s*第[一二三四五六七八九十\d]+章.*\.\.\.\.\.\.*\d+\s*$',  # 目录行：第一章......1
+            r'^\s*\d+\.\d+.*\.\.\.\.\.\.*\d+\s*$',  # 目录行：1.1 标题......1
+        ]
         
+        # 页眉页脚常见模式
+        header_footer_patterns = [
+            r'^\s*第\s*\d+\s*页\s*共\s*\d+\s*页\s*$',
+            r'^\s*Page\s*\d+\s*of\s*\d+\s*$',
+            r'^\s*\d+\s*/\s*\d+\s*$',
+        ]
+        
+        # 纯数字行（可能是页码）
+        page_number_pattern = r'^\s*\d+\s*$'
+        
+        skip_count = 0
+        max_skip = 50  # 最多跳过前50个段落（目录通常在前几页）
+        
+        for idx, para in enumerate(doc.paragraphs):
+            text = para.text.strip()
+            if not text:
+                continue
+            
+            # 检测目录页并跳过
+            if idx < max_skip:
+                is_toc = False
+                for pattern in toc_patterns:
+                    if re.match(pattern, text, re.IGNORECASE):
+                        is_toc = True
+                        skip_count += 1
+                        break
+                if is_toc:
+                    continue
+                
+                # 如果连续跳过很多行，可能是目录，恢复正常处理
+                if skip_count > 20 and idx > skip_count + 5:
+                    pass  # 恢复正常处理
+            
+            # 跳过页眉页脚
+            is_header_footer = False
+            for pattern in header_footer_patterns:
+                if re.match(pattern, text, re.IGNORECASE):
+                    is_header_footer = True
+                    break
+            if is_header_footer:
+                continue
+            
+            # 跳过孤立的页码数字
+            if re.match(page_number_pattern, text) and len(text) < 5:
+                continue
+            
+            # 检测章节标题（用于结构化）
+            # 招标文件常见的章节标题格式
+            chapter_patterns = [
+                r'^第[一二三四五六七八九十\d]+章',  # 第一章
+                r'^第[一二三四五六七八九十\d]+节',  # 第一节
+                r'^\d+\.\d+\s+',  # 1.1 标题
+                r'^\d+\s+[一二三四五六七八九十]',  # 1 一、
+            ]
+            
+            is_chapter = False
+            for pattern in chapter_patterns:
+                if re.match(pattern, text):
+                    is_chapter = True
+                    break
+            
+            # 如果是章节标题，添加分隔
+            if is_chapter:
+                text_parts.append(f"\n{'='*40}\n{text}\n{'='*40}")
+            else:
+                text_parts.append(text)
+        
+        # 提取表格内容（评分标准、技术参数通常是表格）
         for table_idx, table in enumerate(doc.tables):
-            text_parts.append(f"\n[表格 {table_idx + 1}]")
+            # 检查表格内容，判断是否是内容表格还是布局表格
+            table_texts = []
             for row in table.rows:
                 row_text = " | ".join(cell.text.strip() for cell in row.cells)
                 if row_text:
-                    text_parts.append(row_text)
+                    table_texts.append(row_text)
+            
+            # 如果表格有实质内容，保留
+            if table_texts and len(table_texts) > 1:
+                text_parts.append(f"\n[表格 {table_idx + 1}]")
+                text_parts.extend(table_texts)
+                text_parts.append("[表格结束]\n")
         
         return "\n".join(text_parts)
 
@@ -118,10 +197,31 @@ class TextCleaner:
     @staticmethod
     def clean(raw_text: str) -> str:
         """清洗提取的文本"""
-        # 移除多余空白
-        text = re.sub(r'\n{3,}', '\n\n', raw_text)
+        # 移除目录页常见的点线（如：第一章.......1）
+        text = re.sub(r'\.{3,}\s*\d+\s*$', '', raw_text, flags=re.MULTILINE)
+        
+        # 移除多余空白行
+        text = re.sub(r'\n{3,}', '\n\n', text)
+        
         # 移除页眉页脚常见的重复内容
         text = re.sub(r'第\s*\d+\s*页\s*共\s*\d+\s*页', '', text)
+        
+        # 移除孤立的数字（页码）
+        text = re.sub(r'\n\s*\d+\s*\n', '\n', text)
+        
         # 标准化空格
         text = re.sub(r'[ \t]+', ' ', text)
-        return text.strip()
+        
+        # 移除连续的重复行（可能是页眉）
+        lines = text.split('\n')
+        cleaned_lines = []
+        prev_line = None
+        for line in lines:
+            line_stripped = line.strip()
+            # 跳过与上一行完全相同的行（可能是重复的页眉）
+            if line_stripped == prev_line and len(line_stripped) < 50:
+                continue
+            cleaned_lines.append(line)
+            prev_line = line_stripped
+        
+        return '\n'.join(cleaned_lines).strip()
