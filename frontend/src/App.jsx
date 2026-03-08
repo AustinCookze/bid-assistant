@@ -263,23 +263,19 @@ function App() {
             <Building2 className="w-5 h-5 mr-2 text-blue-600" />
             项目基本信息
           </h2>
-          <div className="grid grid-cols-2 gap-4">
-            <div>
-              <p className="text-sm text-gray-500">项目名称</p>
-              <p className="font-medium">{result.project_info?.项目名称 || '未识别'}</p>
-            </div>
-            <div>
-              <p className="text-sm text-gray-500">项目编号</p>
-              <p className="font-medium">{result.project_info?.项目编号 || '未识别'}</p>
-            </div>
-            <div>
-              <p className="text-sm text-gray-500">采购人</p>
-              <p className="font-medium">{result.project_info?.采购人 || '未识别'}</p>
-            </div>
-            <div>
-              <p className="text-sm text-gray-500">预算金额</p>
-              <p className="font-medium">{result.project_info?.预算金额 || '未识别'}</p>
-            </div>
+          <div className="overflow-x-auto">
+            <table className="w-full border-collapse">
+              <tbody className="divide-y divide-gray-200">
+                {result.project_info && Object.entries(result.project_info).map(([key, value]) => (
+                  value && (
+                    <tr key={key} className="hover:bg-gray-50">
+                      <td className="px-4 py-3 text-sm font-medium text-gray-700 w-1/4 bg-gray-50">{key}</td>
+                      <td className="px-4 py-3 text-sm text-gray-900 whitespace-pre-wrap">{value}</td>
+                    </tr>
+                  )
+                ))}
+              </tbody>
+            </table>
           </div>
         </div>
 
@@ -367,25 +363,25 @@ function App() {
                       （共 {result.disqualification_items?.length || 0} 项）
                     </span>
                   </h2>
-                  <div className="space-y-3">
-                    {result.disqualification_items?.map((item, idx) => (
-                      <div key={idx} className={`p-4 rounded-lg border ${getRiskColor(item.risk_level)}`}>
-                        <div className="flex items-start justify-between">
-                          <div className="flex items-center">
-                            {getRiskIcon(item.risk_level)}
-                            <span className="ml-2 font-medium">{item.category}</span>
-                          </div>
-                          <span className={`px-2 py-1 rounded text-xs font-medium ${
-                            item.risk_level === '高' ? 'bg-red-200 text-red-800' : 
-                            item.risk_level === '中' ? 'bg-orange-200 text-orange-800' : 
-                            'bg-yellow-200 text-yellow-800'
-                          }`}>
-                            {item.risk_level}风险
-                          </span>
-                        </div>
-                        <p className="mt-2 text-sm">{item.content}</p>
-                      </div>
-                    ))}
+                  <div className="overflow-x-auto">
+                    <table className="w-full border-collapse border border-gray-200">
+                      <thead className="bg-gray-50">
+                        <tr>
+                          <th className="px-4 py-3 text-left text-sm font-medium text-gray-700 border-b border-gray-200 w-16">序号</th>
+                          <th className="px-4 py-3 text-left text-sm font-medium text-gray-700 border-b border-gray-200 w-32">废标点</th>
+                          <th className="px-4 py-3 text-left text-sm font-medium text-gray-700 border-b border-gray-200">招标文件描述</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-gray-200">
+                        {result.disqualification_items?.map((item, idx) => (
+                          <tr key={idx} className="hover:bg-gray-50">
+                            <td className="px-4 py-3 text-sm text-gray-900 border-r border-gray-100">{item.序号 || idx + 1}</td>
+                            <td className="px-4 py-3 text-sm font-medium text-gray-900 border-r border-gray-100">{item.废标点 || item.category || '-'}</td>
+                            <td className="px-4 py-3 text-sm text-gray-700 whitespace-pre-wrap">{item.招标文件描述 || item.content || '-'}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
                   </div>
                 </div>
               )}
@@ -398,30 +394,30 @@ function App() {
                     评分标准
                   </h2>
                   <div className="overflow-x-auto">
-                    <table className="w-full">
+                    <table className="w-full border-collapse border border-gray-200">
                       <thead className="bg-gray-50">
                         <tr>
-                          <th className="px-4 py-3 text-left text-sm font-medium text-gray-700">评审因素</th>
-                          <th className="px-4 py-3 text-left text-sm font-medium text-gray-700">分值</th>
-                          <th className="px-4 py-3 text-left text-sm font-medium text-gray-700">评分细则</th>
+                          <th className="px-4 py-3 text-left text-sm font-medium text-gray-700 border-b border-gray-200 w-24">评审因素</th>
+                          <th className="px-4 py-3 text-left text-sm font-medium text-gray-700 border-b border-gray-200 w-32">细分项</th>
+                          <th className="px-4 py-3 text-left text-sm font-medium text-gray-700 border-b border-gray-200 w-20">分值</th>
+                          <th className="px-4 py-3 text-left text-sm font-medium text-gray-700 border-b border-gray-200">评分细则</th>
                         </tr>
                       </thead>
-                      <tbody className="divide-y">
+                      <tbody className="divide-y divide-gray-200">
                         {result.scoring_criteria?.map((item, idx) => (
                           <tr key={idx} className="hover:bg-gray-50">
-                            <td className="px-4 py-3">
-                              <span className={`inline-block px-2 py-1 rounded text-xs ${
-                                item.category === '价格分' ? 'bg-green-100 text-green-700' :
-                                item.category === '技术分' ? 'bg-blue-100 text-blue-700' :
-                                item.category === '商务分' ? 'bg-purple-100 text-purple-700' :
-                                'bg-gray-100 text-gray-700'
-                              }`}>
-                                {item.category}
-                              </span>
-                              <p className="mt-1 font-medium">{item.factor}</p>
+                            <td className="px-4 py-3 text-sm font-medium text-gray-900 border-r border-gray-100">
+                              {item.评审因素 || item.category || '-'}
                             </td>
-                            <td className="px-4 py-3 font-semibold text-blue-600">{item.score}</td>
-                            <td className="px-4 py-3 text-sm text-gray-600">{item.criteria}</td>
+                            <td className="px-4 py-3 text-sm text-gray-700 border-r border-gray-100">
+                              {item.细分项 || item.factor || '-'}
+                            </td>
+                            <td className="px-4 py-3 text-sm font-semibold text-blue-600 border-r border-gray-100">
+                              {item.分值 || item.score || '-'}
+                            </td>
+                            <td className="px-4 py-3 text-sm text-gray-700 whitespace-pre-wrap">
+                              {item.评分细则 || item.criteria || '-'}
+                            </td>
                           </tr>
                         ))}
                       </tbody>
