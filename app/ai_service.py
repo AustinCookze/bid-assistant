@@ -59,7 +59,7 @@ class AIService:
     
     def _call_fallback_model(self, prompt: str, temperature: float) -> str:
         """备用模型调用"""
-        fallback_models = ["moonshot-v1-128k", "moonshot-v1-32k"]
+        fallback_models = ["moonshot-v1-128k", "moonshot-v1-32k", "kimi-k2.5"]
         
         for model in fallback_models:
             try:
